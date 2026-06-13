@@ -23,6 +23,7 @@ exports.handler = async (event) => {
 
   const query = event.queryStringParameters?.q;
   const count = event.queryStringParameters?.count || "12";
+  const offset = event.queryStringParameters?.offset || "0";
 
   if (!query) {
     return {
@@ -41,7 +42,7 @@ exports.handler = async (event) => {
     };
   }
 
-  const braveUrl = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=${count}`;
+  const braveUrl = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=${count}&offset=${offset}`;
 
   try {
     // Node 18+ has global fetch built in

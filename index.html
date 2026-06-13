@@ -399,6 +399,46 @@
     .status-dot { animation: none; }
     .loading { animation: none; }
   }
+
+  /* ── Pagination ── */
+  .pagination {
+    display: flex; align-items: center; justify-content: center;
+    gap: 16px; padding: 24px 0 8px;
+  }
+  .page-btn {
+    font-family: 'Courier New', monospace;
+    font-size: 0.8rem; font-weight: 700;
+    letter-spacing: 0.06em;
+    padding: 10px 22px;
+    border-radius: 25px;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    text-transform: uppercase;
+    border: 2px solid rgba(0,240,255,0.25);
+    background: rgba(0,240,255,0.06);
+    color: var(--neon-cyan);
+    text-shadow: 0 0 8px rgba(0,240,255,0.3);
+  }
+  .page-btn:hover:not(:disabled) {
+    background: rgba(0,240,255,0.18);
+    border-color: var(--neon-cyan);
+    box-shadow: 0 0 20px rgba(0,240,255,0.25), 0 0 40px rgba(0,240,255,0.08);
+    transform: translateY(-1px);
+  }
+  .page-btn:disabled {
+    opacity: 0.2; cursor: not-allowed; box-shadow: none; transform: none;
+  }
+  .page-info {
+    font-family: 'Courier New', monospace;
+    font-size: 0.7rem;
+    color: rgba(200,200,255,0.35);
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+  }
+  .page-info span {
+    color: var(--neon-cyan);
+    text-shadow: 0 0 6px rgba(0,240,255,0.3);
+  }
 </style>
 </head>
 <body>
@@ -447,6 +487,11 @@
   <div class="results-area" id="resultsArea">
     <div class="results-meta" id="resultsMeta"></div>
     <div id="resultsList"></div>
+    <div class="pagination" id="pagination" style="display:none">
+      <button class="page-btn" id="prevBtn" disabled>← PREV</button>
+      <span class="page-info" id="pageInfo"></span>
+      <button class="page-btn" id="nextBtn" disabled>NEXT →</button>
+    </div>
   </div>
 
   <div class="status-bar">
@@ -539,65 +584,42 @@
   const resultsList = document.getElementById('resultsList');
   const resultsMeta = document.getElementById('resultsMeta');
 
-  /**
-   * Build a list of search endpoints to try in order:
-   * 1. Local proxy (if on localhost)
-   * 2. Netlify function (relative URL — works on Netlify)
-   * 3. Direct Brave API (needs key in localStorage)
-   */
-  function getSearchEndpoints(q) {
-    const endpoints = [];
+  // Pagination state
+  const pagination = document.getElementById('pagination');
+  const prevBtn = document.getElementById('prevBtn');
+  const nextBtn = document.getElementById('nextBtn');
+  const pageInfo = document.getElementById('pageInfo');
+  const RESULTS_PER_PAGE = 12;
+  let currentQuery = '';
+  let currentOffset = 0;
+  let totalResults = 0;
 
-    // 1. Local Python proxy (any time we're local — file://, localhost, etc.)
-    if (isLocalhost) {
-      endpoints.push({
-        name: 'Local Proxy',
-        url: `http://localhost:8777/search?q=${encodeURIComponent(q)}&count=12`,
-      });
-      // Also send key to proxy if we have one
-      const apiKey = getApiKey();
-      if (apiKey) {
-        fetch(`http://localhost:8777/key?set=${encodeURIComponent(apiKey)}`).catch(() => {});
-      }
+  function updatePagination() {
+    if (totalResults === 0 || currentQuery === '') {
+      pagination.style.display = 'none';
+      return;
     }
-
-    // 2. Netlify function (relative URL — only when NOT on file:// protocol)
-    //    On Netlify this hits the serverless function; on file:// it's meaningless
-    if (!isFileProtocol) {
-      endpoints.push({
-        name: 'Netlify Function',
-        url: `/search?q=${encodeURIComponent(q)}&count=12`,
-      });
-    }
-
-    // 3. Direct Brave API fallback (needs localStorage key)
-    const localKey = getApiKey();
-    if (localKey) {
-      endpoints.push({
-        name: 'Brave Direct',
-        url: `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(q)}&count=12`,
-        headers: {
-          'Accept': 'application/json',
-          'X-Subscription-Token': localKey,
-        },
-      });
-    }
-
-    return endpoints;
+    pagination.style.display = 'flex';
+    const currentPage = Math.floor(currentOffset / RESULTS_PER_PAGE) + 1;
+    const totalPages = Math.max(1, Math.ceil(totalResults / RESULTS_PER_PAGE));
+    const isLastPage = currentOffset + RESULTS_PER_PAGE >= totalResults;
+    pageInfo.innerHTML = `<span>PAGE ${currentPage}</span> / ${totalPages}`;
+    prevBtn.disabled = currentOffset === 0;
+    nextBtn.disabled = isLastPage;
   }
 
-  async function doSearch(query) {
-    const q = query || input.value.trim();
+  async function doPagedSearch(offset) {
+    const q = currentQuery;
     if (!q) return;
 
-    // Switch to results mode
-    app.classList.add('has-results');
-    input.value = q;
-    resultsList.innerHTML = '<div class="loading">◆ SEARCHING THE GRID ◆</div>';
+    currentOffset = offset;
+    resultsList.innerHTML = '<div class="loading">◆ SCANNING GRID PAGE ' + (Math.floor(offset / RESULTS_PER_PAGE) + 1) + ' ◆</div>';
     btn.disabled = true;
     btn.textContent = '...';
+    prevBtn.disabled = true;
+    nextBtn.disabled = true;
 
-    const endpoints = getSearchEndpoints(q);
+    const endpoints = getSearchEndpoints(q, offset);
 
     let lastError = null;
     for (const endpoint of endpoints) {
@@ -612,16 +634,20 @@
 
         const data = await res.json();
 
-        // If the response is an error from our proxy/function, continue to next
         if (data.error) {
           throw new Error(data.error);
         }
 
         const web = data.web;
         const results = web?.results || [];
+        totalResults = web?.total_result_count || (currentOffset + results.length);
+
+        // If we got fewer results than requested OR hit the total, this is the last page
+        const isLastPage = results.length < RESULTS_PER_PAGE ||
+                           (web?.total_result_count && currentOffset + RESULTS_PER_PAGE >= web.total_result_count);
 
         resultsMeta.textContent =
-          `Found ~${web?.total_result_count?.toLocaleString() || results.length} results · ` +
+          `Found ~${totalResults.toLocaleString()} results · ` +
           `${(data.processing_time_ms / 1000).toFixed(2)}s · [${endpoint.name}]`;
 
         if (results.length === 0) {
@@ -636,15 +662,14 @@
           `).join('');
         }
 
-        // Success — exit the loop
+        updatePagination();
         return;
       } catch (err) {
         lastError = err;
-        // Continue to next endpoint
       }
     }
 
-    // All endpoints failed
+    // All failed
     resultsList.innerHTML = `<div class="error">
       ⚠ GRID DISRUPTION<br><br>
       <span style="font-size:0.75rem;text-shadow:none;color:rgba(255,45,149,0.7);">${escapeHtml(lastError?.message || 'All search endpoints failed')}</span><br><br>
@@ -652,9 +677,82 @@
         ${isLocalhost ? 'Make sure the proxy is running:<br><code style="color:var(--neon-cyan)">python3 neonex-proxy.py</code>' : 'Check that BRAVE_API_KEY is set in Netlify environment variables'}
       </span>
     </div>`;
-
+    pagination.style.display = 'none';
     btn.disabled = false;
     btn.textContent = 'SEARCH';
+  }
+
+  // Pagination button handlers
+  prevBtn.addEventListener('click', () => {
+    if (currentOffset > 0) {
+      doPagedSearch(Math.max(0, currentOffset - RESULTS_PER_PAGE));
+    }
+  });
+
+  nextBtn.addEventListener('click', () => {
+    doPagedSearch(currentOffset + RESULTS_PER_PAGE);
+  });
+
+  /**
+   * Build a list of search endpoints to try in order:
+   * 1. Local proxy (if on localhost)
+   * 2. Netlify function (relative URL — works on Netlify)
+   * 3. Direct Brave API (needs key in localStorage)
+   */
+  function getSearchEndpoints(q, offset = 0) {
+    const endpoints = [];
+
+    // 1. Local Python proxy (any time we're local — file://, localhost, etc.)
+    if (isLocalhost) {
+      endpoints.push({
+        name: 'Local Proxy',
+        url: `http://localhost:8777/search?q=${encodeURIComponent(q)}&count=${RESULTS_PER_PAGE}&offset=${offset}`,
+      });
+      // Also send key to proxy if we have one
+      const apiKey = getApiKey();
+      if (apiKey) {
+        fetch(`http://localhost:8777/key?set=${encodeURIComponent(apiKey)}`).catch(() => {});
+      }
+    }
+
+    // 2. Netlify function (relative URL — only when NOT on file:// protocol)
+    if (!isFileProtocol) {
+      endpoints.push({
+        name: 'Netlify Function',
+        url: `/search?q=${encodeURIComponent(q)}&count=${RESULTS_PER_PAGE}&offset=${offset}`,
+      });
+    }
+
+    // 3. Direct Brave API fallback (needs localStorage key)
+    const localKey = getApiKey();
+    if (localKey) {
+      endpoints.push({
+        name: 'Brave Direct',
+        url: `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(q)}&count=${RESULTS_PER_PAGE}&offset=${offset}`,
+        headers: {
+          'Accept': 'application/json',
+          'X-Subscription-Token': localKey,
+        },
+      });
+    }
+
+    return endpoints;
+  }
+
+  async function doSearch(query) {
+    const q = query || input.value.trim();
+    if (!q) return;
+
+    // Reset pagination state for a new search
+    currentQuery = q;
+    currentOffset = 0;
+    totalResults = 0;
+
+    // Switch to results mode
+    app.classList.add('has-results');
+    input.value = q;
+
+    await doPagedSearch(0);
   }
 
   function escapeHtml(str) {
@@ -678,6 +776,10 @@
     if (app.classList.contains('has-results')) {
       app.classList.remove('has-results');
       resultsList.innerHTML = '';
+      pagination.style.display = 'none';
+      currentQuery = '';
+      currentOffset = 0;
+      totalResults = 0;
       input.value = '';
       input.focus();
       // Glitch effect
