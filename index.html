@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NEONEX — Search the Grid</title>
+<style>
+  :root {
+    --neon-pink: #ff2d95;
+    --neon-cyan: #00f0ff;
+    --neon-purple: #b347ea;
+    --neon-yellow: #ffd319;
+    --dark: #0a0a0f;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--dark);
+    color: #e0e0ff;
+    min-height: 100vh;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── Background layers ── */
+  .grid-floor {
+    position: fixed;
+    bottom: 0; left: 50%;
+    transform: translateX(-50%);
+    width: 200vw; height: 70vh;
+    background:
+      repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,45,149,0.08) 2px, rgba(255,45,149,0.08) 3px),
+      repeating-linear-gradient(90deg, transparent, transparent 80px, rgba(0,240,255,0.05) 80px, rgba(0,240,255,0.05) 81px);
+    mask-image: linear-gradient(to top, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0) 100%);
+    pointer-events: none; z-index: 0;
+  }
+
+  .sun {
+    position: fixed;
+    bottom: 20%; left: 50%;
+    transform: translateX(-50%);
+    width: 600px; height: 300px;
+    border-radius: 300px 300px 0 0;
+    background: linear-gradient(180deg, var(--neon-yellow) 0%, #ff6b35 40%, var(--neon-pink) 70%, transparent 100%);
+    opacity: 0.15; filter: blur(40px);
+    pointer-events: none; z-index: 0;
+  }
+  .sun-cut {
+    position: fixed;
+    bottom: 20%; left: 50%;
+    transform: translateX(-50%);
+    width: 600px; height: 150px;
+    border-radius: 300px 300px 0 0;
+    background: linear-gradient(180deg, var(--neon-yellow) 0%, #ff6b35 40%, var(--neon-pink) 80%);
+    opacity: 0.25; filter: blur(2px);
+    pointer-events: none; z-index: 0;
+  }
+  .sun-lines {
+    position: fixed;
+    bottom: 20%; left: 50%;
+    transform: translateX(-50%);
+    width: 600px; height: 150px;
+    border-radius: 300px 300px 0 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 4px, rgba(10,10,15,0.3) 4px, rgba(10,10,15,0.3) 5px);
+    pointer-events: none; z-index: 0;
+  }
+
+  .triangle-decor {
+    position: fixed; pointer-events: none; z-index: 0;
+  }
+  .triangle-decor.t1 {
+    top: 10%; left: 8%;
+    width: 120px; height: 100px;
+    background: linear-gradient(135deg, var(--neon-cyan) 0%, transparent 60%);
+    clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+    opacity: 0.08;
+  }
+  .triangle-decor.t2 {
+    bottom: 30%; right: 10%;
+    width: 80px; height: 70px;
+    background: linear-gradient(225deg, var(--neon-pink) 0%, transparent 60%);
+    clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+    opacity: 0.1;
+  }
+
+  .scanlines {
+    position: fixed; inset: 0;
+    pointer-events: none; z-index: 999;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 3px);
+  }
+
+  /* ── Layout ── */
+  .app {
+    position: relative; z-index: 10;
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 40px 20px;
+    display: flex; flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+  }
+
+  .app.has-results {
+    padding-top: 24px;
+    align-items: stretch;
+  }
+
+  /* ── Logo ── */
+  .logo-wrap { text-align: center; position: relative; }
+  .logo {
+    font-family: 'Courier New', monospace;
+    font-size: 4.5rem; font-weight: 900;
+    letter-spacing: 0.08em;
+    color: var(--neon-cyan);
+    text-shadow:
+      0 0 10px var(--neon-cyan), 0 0 40px var(--neon-cyan),
+      0 0 80px var(--neon-cyan), 0 0 120px rgba(0,240,255,0.4),
+      2px 2px 0 var(--neon-pink), -2px -2px 0 var(--neon-purple);
+    animation: flicker 3s infinite;
+    cursor: pointer; user-select: none;
+  }
+  @keyframes flicker {
+    0%,19%,21%,23%,25%,54%,56%,100%{opacity:1}
+    20%,24%,55%{opacity:0.85}
+  }
+  .logo-sub {
+    font-family: 'Courier New', monospace;
+    font-size: 0.85rem; letter-spacing: 0.3em;
+    color: var(--neon-pink);
+    text-shadow: 0 0 20px var(--neon-pink);
+    margin-top: 4px; text-transform: uppercase;
+  }
+  .jp-tag {
+    position: absolute; top: -12px; right: -40px;
+    font-size: 0.65rem; color: var(--neon-purple);
+    letter-spacing: 0.2em;
+    text-shadow: 0 0 10px var(--neon-purple);
+    font-family: 'Courier New', monospace;
+  }
+
+  .has-results .logo { font-size: 2rem; }
+  .has-results .logo-sub { font-size: 0.6rem; }
+  .has-results .jp-tag { font-size: 0.5rem; top: -8px; right: -30px; }
+
+  /* ── Host badge ── */
+  .host-badge {
+    font-family: 'Courier New', monospace;
+    font-size: 0.6rem;
+    padding: 4px 12px;
+    border-radius: 12px;
+    margin-bottom: 12px;
+    letter-spacing: 0.05em;
+    display: none;
+  }
+  .host-badge.local {
+    display: inline-block;
+    background: rgba(0,240,255,0.1);
+    border: 1px solid rgba(0,240,255,0.2);
+    color: var(--neon-cyan);
+    text-shadow: 0 0 6px var(--neon-cyan);
+  }
+  .host-badge.netlify {
+    display: inline-block;
+    background: rgba(179,71,234,0.1);
+    border: 1px solid rgba(179,71,234,0.2);
+    color: var(--neon-purple);
+    text-shadow: 0 0 6px var(--neon-purple);
+  }
+
+  /* ── Search ── */
+  .search-wrap { width: 100%; position: relative; margin: 32px 0 24px; }
+  .has-results .search-wrap { margin: 16px 0; }
+  .search-box {
+    width: 100%; display: flex;
+    background: rgba(20,20,40,0.8);
+    border: 2px solid rgba(255,45,149,0.3);
+    border-radius: 50px; overflow: hidden;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    box-shadow: 0 0 30px rgba(255,45,149,0.15), 0 0 60px rgba(0,240,255,0.08), inset 0 1px 0 rgba(255,255,255,0.05);
+    transition: all 0.3s ease;
+  }
+  .search-box:focus-within {
+    border-color: var(--neon-cyan);
+    box-shadow: 0 0 40px rgba(0,240,255,0.25), 0 0 80px rgba(255,45,149,0.15), 0 0 0 4px rgba(0,240,255,0.06);
+  }
+  .search-icon {
+    display: flex; align-items: center;
+    padding-left: 20px; font-size: 1.2rem;
+    color: var(--neon-pink);
+    text-shadow: 0 0 10px var(--neon-pink);
+  }
+  .search-box input {
+    flex: 1; background: transparent; border: none;
+    padding: 16px 20px; font-size: 1.1rem;
+    color: #fff; outline: none; font-family: inherit;
+  }
+  .search-box input::placeholder { color: rgba(200,200,255,0.3); }
+  .search-btn {
+    background: linear-gradient(135deg, var(--neon-pink), var(--neon-purple));
+    border: none; color: #fff;
+    padding: 16px 28px; font-size: 0.95rem; font-weight: 700;
+    cursor: pointer; letter-spacing: 0.05em;
+    transition: all 0.3s ease;
+    text-shadow: 0 0 10px rgba(255,255,255,0.5);
+    position: relative; overflow: hidden;
+  }
+  .search-btn:hover {
+    background: linear-gradient(135deg, #ff4da6, #c75bff);
+    box-shadow: 0 0 30px rgba(255,45,149,0.4);
+  }
+  .search-btn::after {
+    content: ''; position: absolute;
+    top: 0; left: 0; right: 0; height: 1px;
+    background: rgba(255,255,255,0.4);
+  }
+  .search-btn:disabled {
+    opacity: 0.5; cursor: not-allowed;
+    box-shadow: none;
+  }
+
+  /* ── API Key row (local dev only) ── */
+  .key-row {
+    display: flex; gap: 10px; align-items: center;
+    margin-bottom: 20px; flex-wrap: wrap; justify-content: center;
+  }
+  .key-row.hidden { display: none; }
+  .key-input {
+    background: rgba(20,20,40,0.6);
+    border: 1px solid rgba(255,45,149,0.2);
+    border-radius: 20px;
+    padding: 6px 14px; font-size: 0.75rem;
+    color: var(--neon-cyan);
+    font-family: 'Courier New', monospace;
+    width: 280px; outline: none;
+    transition: all 0.3s ease;
+  }
+  .key-input:focus {
+    border-color: var(--neon-cyan);
+    box-shadow: 0 0 15px rgba(0,240,255,0.15);
+  }
+  .key-input::placeholder { color: rgba(200,200,255,0.2); }
+  .key-save {
+    padding: 6px 16px; border-radius: 20px;
+    font-size: 0.7rem; font-weight: 700;
+    letter-spacing: 0.05em; cursor: pointer;
+    border: 1px solid var(--neon-cyan);
+    background: rgba(0,240,255,0.1);
+    color: var(--neon-cyan);
+    text-shadow: 0 0 6px var(--neon-cyan);
+    transition: all 0.3s ease;
+  }
+  .key-save:hover {
+    background: rgba(0,240,255,0.2);
+    box-shadow: 0 0 15px rgba(0,240,255,0.2);
+  }
+  .key-status {
+    font-family: 'Courier New', monospace;
+    font-size: 0.65rem;
+    letter-spacing: 0.05em;
+  }
+  .key-status.set { color: var(--neon-cyan); text-shadow: 0 0 6px var(--neon-cyan); }
+  .key-status.unset { color: rgba(255,45,149,0.6); }
+
+  /* ── Quick links ── */
+  .quick-links {
+    display: flex; gap: 16px; flex-wrap: wrap; justify-content: center;
+  }
+  .quick-link {
+    padding: 10px 22px; border-radius: 25px;
+    font-size: 0.85rem; font-weight: 600; cursor: pointer;
+    letter-spacing: 0.04em;
+    color: var(--neon-cyan);
+    background: rgba(0,240,255,0.06);
+    border: 1px solid rgba(0,240,255,0.2);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    transition: all 0.3s ease;
+    text-shadow: 0 0 8px rgba(0,240,255,0.3);
+  }
+  .quick-link:hover {
+    background: rgba(0,240,255,0.15);
+    border-color: var(--neon-cyan);
+    box-shadow: 0 0 25px rgba(0,240,255,0.25);
+    transform: translateY(-2px);
+  }
+  .has-results .quick-links { display: none; }
+
+  /* ── Results ── */
+  .results-area { display: none; width: 100%; }
+  .has-results .results-area { display: block; }
+
+  .results-meta {
+    font-family: 'Courier New', monospace;
+    font-size: 0.7rem;
+    color: rgba(200,200,255,0.4);
+    margin-bottom: 20px;
+    letter-spacing: 0.05em;
+  }
+
+  .result-card {
+    background: rgba(20,20,40,0.6);
+    border: 1px solid rgba(255,45,149,0.1);
+    border-left: 2px solid rgba(0,240,255,0.3);
+    border-radius: 0 12px 12px 0;
+    padding: 18px 22px;
+    margin-bottom: 12px;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    transition: all 0.3s ease;
+    cursor: pointer;
+  }
+  .result-card:hover {
+    border-color: var(--neon-cyan);
+    border-left-width: 4px;
+    box-shadow: 0 0 25px rgba(0,240,255,0.12);
+    background: rgba(30,30,60,0.7);
+  }
+  .result-url {
+    font-size: 0.7rem;
+    color: var(--neon-purple);
+    margin-bottom: 4px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .result-title {
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--neon-cyan);
+    text-shadow: 0 0 6px rgba(0,240,255,0.2);
+    margin-bottom: 6px;
+    text-decoration: none;
+  }
+  .result-desc {
+    font-size: 0.85rem;
+    color: rgba(200,200,255,0.6);
+    line-height: 1.5;
+  }
+
+  .loading {
+    text-align: center; padding: 40px;
+    color: var(--neon-cyan);
+    font-family: 'Courier New', monospace;
+    text-shadow: 0 0 20px var(--neon-cyan);
+    animation: pulse 1s infinite alternate;
+  }
+  @keyframes pulse {
+    from { opacity: 0.5; } to { opacity: 1; }
+  }
+
+  .error {
+    text-align: center; padding: 30px;
+    color: var(--neon-pink);
+    font-family: 'Courier New', monospace;
+    text-shadow: 0 0 15px var(--neon-pink);
+    border: 1px solid rgba(255,45,149,0.3);
+    border-radius: 12px;
+    background: rgba(30,20,40,0.5);
+  }
+
+  .no-results {
+    text-align: center; padding: 40px;
+    color: rgba(200,200,255,0.2);
+    font-family: 'Courier New', monospace;
+    font-size: 0.9rem;
+  }
+
+  /* ── Status bar ── */
+  .status-bar {
+    font-family: 'Courier New', monospace;
+    font-size: 0.7rem;
+    color: rgba(200,200,255,0.4);
+    letter-spacing: 0.08em;
+    display: flex; gap: 20px; align-items: center;
+    margin-top: auto; padding: 24px 0;
+  }
+  .status-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--neon-cyan);
+    box-shadow: 0 0 8px var(--neon-cyan);
+    animation: dotPulse 2s infinite;
+  }
+  @keyframes dotPulse {
+    0%,100%{opacity:1} 50%{opacity:0.4}
+  }
+
+  /* ── Responsive ── */
+  @media (max-width: 600px) {
+    .logo { font-size: 2.8rem; }
+    .logo-sub { font-size: 0.7rem; }
+    .search-btn { padding: 16px 18px; font-size: 0.8rem; }
+    .quick-links { gap: 10px; }
+    .key-input { width: 200px; }
+    .has-results .logo { font-size: 1.5rem; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .logo { animation: none; }
+    .status-dot { animation: none; }
+    .loading { animation: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="grid-floor"></div>
+<div class="sun"></div>
+<div class="sun-cut"></div>
+<div class="sun-lines"></div>
+<div class="triangle-decor t1"></div>
+<div class="triangle-decor t2"></div>
+<div class="stars" id="stars"></div>
+<div class="scanlines"></div>
+
+<div class="app" id="app">
+  <div class="logo-wrap">
+    <span class="jp-tag">サーチ</span>
+    <h1 class="logo" id="logo">NEONEX</h1>
+    <p class="logo-sub">S E A R C H ＿ T H E ＿ G R I D</p>
+  </div>
+
+  <div class="host-badge" id="hostBadge"></div>
+
+  <!-- API key row — only shown when running locally -->
+  <div class="key-row hidden" id="keyRow">
+    <input type="password" class="key-input" id="keyInput" placeholder="Brave Search API key...">
+    <button class="key-save" id="keySave">SET KEY</button>
+    <span class="key-status" id="keyStatus">⚡ NO KEY</span>
+  </div>
+
+  <div class="search-wrap">
+    <div class="search-box">
+      <span class="search-icon">◇</span>
+      <input type="text" id="searchInput" placeholder="Enter the grid..." autofocus>
+      <button class="search-btn" id="searchBtn">SEARCH</button>
+    </div>
+  </div>
+
+  <div class="quick-links">
+    <span class="quick-link" data-query="vaporwave aesthetic">ＡＥＳＴＨＥＴＩＣ</span>
+    <span class="quick-link" data-query="synthwave music">ＳＹＮＴＨＷＡＶＥ</span>
+    <span class="quick-link" data-query="retro computing">ＲＥＴＲＯ</span>
+    <span class="quick-link" data-query="cyberpunk art">ＣＹＢＥＲ</span>
+    <span class="quick-link" data-query="80s design">８０ｓ</span>
+  </div>
+
+  <div class="results-area" id="resultsArea">
+    <div class="results-meta" id="resultsMeta"></div>
+    <div id="resultsList"></div>
+  </div>
+
+  <div class="status-bar">
+    <span class="status-dot"></span>
+    <span>GRID ONLINE</span>
+    <span>∥</span>
+    <span id="clock">00:00:00</span>
+    <span>∥</span>
+    <span id="sysVer">SYS v4.0.0</span>
+  </div>
+</div>
+
+<script>
+  // ── Detect environment ──
+  const isFileProtocol = window.location.protocol === 'file:';
+  const isLocalhost = isFileProtocol ||
+                      window.location.hostname === 'localhost' ||
+                      window.location.hostname === '127.0.0.1' ||
+                      window.location.hostname.startsWith('192.168.') ||
+                      window.location.hostname.endsWith('.local');
+  const isNetlify = !isLocalhost;
+
+  const hostBadge = document.getElementById('hostBadge');
+  if (isFileProtocol) {
+    hostBadge.textContent = '◆ FILE MODE ◆';
+    hostBadge.className = 'host-badge local';
+    document.getElementById('sysVer').textContent = 'SYS v4.0.0 · FILE';
+  } else if (isLocalhost) {
+    hostBadge.textContent = '◆ LOCAL DEV ◆';
+    hostBadge.className = 'host-badge local';
+  } else {
+    hostBadge.textContent = '◆ NETLIFY ◆';
+    hostBadge.className = 'host-badge netlify';
+    document.getElementById('sysVer').textContent = 'SYS v4.0.0 · NETLIFY';
+  }
+
+  // ── API Key management (local dev only) ──
+  const keyRow = document.getElementById('keyRow');
+  const keyInput = document.getElementById('keyInput');
+  const keySave = document.getElementById('keySave');
+  const keyStatus = document.getElementById('keyStatus');
+
+  function getApiKey() {
+    return localStorage.getItem('neonex_brave_key') || '';
+  }
+
+  function updateKeyUI() {
+    const key = getApiKey();
+    if (key) {
+      keyInput.value = key.substring(0, 8) + '••••••••';
+      keyStatus.textContent = '🔑 KEY SET';
+      keyStatus.className = 'key-status set';
+      keyInput.placeholder = 'Key saved — enter new key to replace';
+    } else {
+      keyInput.value = '';
+      keyStatus.textContent = '⚡ NO KEY';
+      keyStatus.className = 'key-status unset';
+      keyInput.placeholder = 'Brave Search API key...';
+    }
+  }
+
+  // Show key row only on localhost
+  if (isLocalhost) {
+    keyRow.classList.remove('hidden');
+    updateKeyUI();
+  }
+
+  keySave.addEventListener('click', () => {
+    const val = keyInput.value.trim();
+    if (val && !val.includes('•')) {
+      localStorage.setItem('neonex_brave_key', val);
+      updateKeyUI();
+    } else if (!getApiKey()) {
+      alert('Enter a valid Brave Search API key first.\nGet one: https://brave.com/search/api/');
+    }
+  });
+
+  keyInput.addEventListener('focus', () => {
+    if (getApiKey() && keyInput.value.includes('•')) {
+      keyInput.value = '';
+      keyInput.placeholder = 'Paste new key here...';
+    }
+  });
+
+  // ── Search ──
+  const input = document.getElementById('searchInput');
+  const btn = document.getElementById('searchBtn');
+  const app = document.getElementById('app');
+  const resultsArea = document.getElementById('resultsArea');
+  const resultsList = document.getElementById('resultsList');
+  const resultsMeta = document.getElementById('resultsMeta');
+
+  /**
+   * Build a list of search endpoints to try in order:
+   * 1. Local proxy (if on localhost)
+   * 2. Netlify function (relative URL — works on Netlify)
+   * 3. Direct Brave API (needs key in localStorage)
+   */
+  function getSearchEndpoints(q) {
+    const endpoints = [];
+
+    // 1. Local Python proxy (any time we're local — file://, localhost, etc.)
+    if (isLocalhost) {
+      endpoints.push({
+        name: 'Local Proxy',
+        url: `http://localhost:8777/search?q=${encodeURIComponent(q)}&count=12`,
+      });
+      // Also send key to proxy if we have one
+      const apiKey = getApiKey();
+      if (apiKey) {
+        fetch(`http://localhost:8777/key?set=${encodeURIComponent(apiKey)}`).catch(() => {});
+      }
+    }
+
+    // 2. Netlify function (relative URL — only when NOT on file:// protocol)
+    //    On Netlify this hits the serverless function; on file:// it's meaningless
+    if (!isFileProtocol) {
+      endpoints.push({
+        name: 'Netlify Function',
+        url: `/search?q=${encodeURIComponent(q)}&count=12`,
+      });
+    }
+
+    // 3. Direct Brave API fallback (needs localStorage key)
+    const localKey = getApiKey();
+    if (localKey) {
+      endpoints.push({
+        name: 'Brave Direct',
+        url: `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(q)}&count=12`,
+        headers: {
+          'Accept': 'application/json',
+          'X-Subscription-Token': localKey,
+        },
+      });
+    }
+
+    return endpoints;
+  }
+
+  async function doSearch(query) {
+    const q = query || input.value.trim();
+    if (!q) return;
+
+    // Switch to results mode
+    app.classList.add('has-results');
+    input.value = q;
+    resultsList.innerHTML = '<div class="loading">◆ SEARCHING THE GRID ◆</div>';
+    btn.disabled = true;
+    btn.textContent = '...';
+
+    const endpoints = getSearchEndpoints(q);
+
+    let lastError = null;
+    for (const endpoint of endpoints) {
+      try {
+        const fetchOpts = endpoint.headers ? { headers: endpoint.headers } : {};
+        const res = await fetch(endpoint.url, fetchOpts);
+
+        if (!res.ok) {
+          const errText = await res.text();
+          throw new Error(`API error ${res.status}: ${errText.substring(0, 200)}`);
+        }
+
+        const data = await res.json();
+
+        // If the response is an error from our proxy/function, continue to next
+        if (data.error) {
+          throw new Error(data.error);
+        }
+
+        const web = data.web;
+        const results = web?.results || [];
+
+        resultsMeta.textContent =
+          `Found ~${web?.total_result_count?.toLocaleString() || results.length} results · ` +
+          `${(data.processing_time_ms / 1000).toFixed(2)}s · [${endpoint.name}]`;
+
+        if (results.length === 0) {
+          resultsList.innerHTML = '<div class="no-results">NO SIGNALS DETECTED IN THE GRID</div>';
+        } else {
+          resultsList.innerHTML = results.map((r) => `
+            <a class="result-card" href="${r.url}" target="_blank" rel="noopener" style="text-decoration:none;display:block;">
+              <div class="result-url">${escapeHtml(r.url)}</div>
+              <div class="result-title">${escapeHtml(r.title)}</div>
+              <div class="result-desc">${escapeHtml(r.description || '')}</div>
+            </a>
+          `).join('');
+        }
+
+        // Success — exit the loop
+        return;
+      } catch (err) {
+        lastError = err;
+        // Continue to next endpoint
+      }
+    }
+
+    // All endpoints failed
+    resultsList.innerHTML = `<div class="error">
+      ⚠ GRID DISRUPTION<br><br>
+      <span style="font-size:0.75rem;text-shadow:none;color:rgba(255,45,149,0.7);">${escapeHtml(lastError?.message || 'All search endpoints failed')}</span><br><br>
+      <span style="font-size:0.65rem;color:rgba(200,200,255,0.3);">
+        ${isLocalhost ? 'Make sure the proxy is running:<br><code style="color:var(--neon-cyan)">python3 neonex-proxy.py</code>' : 'Check that BRAVE_API_KEY is set in Netlify environment variables'}
+      </span>
+    </div>`;
+
+    btn.disabled = false;
+    btn.textContent = 'SEARCH';
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  btn.addEventListener('click', () => doSearch());
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') doSearch();
+  });
+
+  // Quick links
+  document.querySelectorAll('.quick-link').forEach(link => {
+    link.addEventListener('click', () => doSearch(link.dataset.query));
+  });
+
+  // Click logo to reset to home
+  document.getElementById('logo').addEventListener('click', () => {
+    if (app.classList.contains('has-results')) {
+      app.classList.remove('has-results');
+      resultsList.innerHTML = '';
+      input.value = '';
+      input.focus();
+      // Glitch effect
+      const logo = document.getElementById('logo');
+      logo.style.textShadow = '3px 0 var(--neon-pink), -3px 0 var(--neon-cyan), 0 0 80px var(--neon-pink)';
+      setTimeout(() => {
+        logo.style.textShadow = '0 0 10px var(--neon-cyan), 0 0 40px var(--neon-cyan), 0 0 80px var(--neon-cyan), 0 0 120px rgba(0,240,255,0.4), 2px 2px 0 var(--neon-pink), -2px -2px 0 var(--neon-purple)';
+      }, 150);
+    }
+  });
+
+  // ── Stars ──
+  const starsEl = document.getElementById('stars');
+  for (let i = 0; i < 80; i++) {
+    const star = document.createElement('div');
+    const size = Math.random() * 2.5 + 1;
+    star.style.cssText = `
+      position:absolute;width:${size}px;height:${size}px;
+      background:${Math.random()>0.7?'var(--neon-cyan)':'var(--neon-pink)'};
+      border-radius:50%;
+      top:${Math.random()*100}%;left:${Math.random()*100}%;
+      opacity:${Math.random()*0.5+0.1};
+      box-shadow:0 0 ${size*3}px currentColor;
+      animation:twinkle ${Math.random()*3+2}s infinite alternate;
+    `;
+    starsEl.appendChild(star);
+  }
+  const twinkleStyle = document.createElement('style');
+  twinkleStyle.textContent = '@keyframes twinkle{from{opacity:0.15}to{opacity:0.6}}';
+  document.head.appendChild(twinkleStyle);
+
+  // ── Clock ──
+  function updateClock() {
+    document.getElementById('clock').textContent = new Date().toTimeString().split(' ')[0];
+  }
+  updateClock();
+  setInterval(updateClock, 1000);
+</script>
+</body>
+</html>

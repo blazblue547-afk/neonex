@@ -1,0 +1,25 @@
+[build]
+  # Static site — no build step needed
+  publish = "."
+
+[functions]
+  directory = "netlify/functions"
+
+# /search → serverless function (query params pass through automatically)
+[[redirects]]
+  from = "/search"
+  to = "/.netlify/functions/search"
+  status = 200
+
+# SPA fallback — serve index.html for everything else
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Optional: custom headers for security
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
